@@ -5,9 +5,19 @@ import {
   Route,
   Navigate,
   useLocation,
+  useNavigate,
+  Link,
+  Outlet,
 } from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import LoginPage from "./pages/auth/LoginPage";
+import {
+  ClerkProvider,
+  SignedIn,
+  SignedOut,
+  SignIn,
+  UserButton,
+  useUser,
+  useAuth,
+} from "@clerk/clerk-react";
 import DashboardPage from "./pages/dashboard/DashboardPage";
 import StaffListPage from "./pages/staff/StaffListPage";
 import StaffDetailPage from "./pages/staff/StaffDetailPage";
@@ -15,13 +25,24 @@ import StaffFormPage from "./pages/staff/StaffFormPage";
 import AttendancePage from "./pages/attendance/AttendancePage";
 import "./App.css";
 
+// Clerk 퍼블리시 키 (환경 변수에서 가져오거나 직접 설정)
+const PUBLISHABLE_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  "pk_test_ZHJpdmluZy1nYXItMzYuY2xlcmsuYWNjb3VudHMuZGV2JA";
+
+if (!PUBLISHABLE_KEY) {
+  throw new Error("Missing Clerk Publishable Key");
+}
+
 // 404 Not Found 페이지 (기획서 구조 참고)
 const NotFoundPage = () => {
   return (
     <div className="not-found-container">
       <h1>404 - 페이지를 찾을 수 없습니다</h1>
       <p>요청하신 페이지가 존재하지 않습니다.</p>
-      <a href="/dashboard" className="back-link">대시보드로 돌아가기</a>
+      <Link to="/dashboard" className="back-link">
+        대시보드로 돌아가기
+      </Link>
     </div>
   );
 };
@@ -36,15 +57,15 @@ const ProfilePage = () => {
   );
 };
 
-// 기본 인증 가드 (기획서 구조 기반)
-const AuthGuard = ({ children, requiredRole = null }) => {
-  const { isAuthenticated, loading, hasPermission, role } = useAuth();
+// Clerk 기반 인증 가드
+const AuthGuard = ({ children }) => {
+  const { isLoaded, isSignedIn } = useAuth();
   const location = useLocation();
 
   console.log("[AuthGuard] 라우트 접근 확인:", location.pathname);
 
   // 로딩 중
-  if (loading) {
+  if (!isLoaded) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
@@ -53,89 +74,77 @@ const AuthGuard = ({ children, requiredRole = null }) => {
     );
   }
 
-  // 인증되지 않은 경우 로그인 페이지로 리다이렉트
-  if (!isAuthenticated) {
+  // 인증되지 않은 경우 Clerk SignIn으로 리다이렉트
+  if (!isSignedIn) {
     console.log("[AuthGuard] 인증되지 않음, 로그인 페이지로 리다이렉트");
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  // 권한 체크 (필요한 경우)
-  if (requiredRole && !hasPermission(requiredRole)) {
-    console.log("[AuthGuard] 권한 부족:", requiredRole);
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/sign-in" state={{ from: location }} replace />;
   }
 
   return children;
 };
 
-// 관리자 전용 가드 (확장성 고려)
+// 관리자 전용 가드 (향후 확장)
 const AdminGuard = ({ children }) => {
-  return <AuthGuard requiredRole="admin">{children}</AuthGuard>;
+  // 현재는 모든 인증된 사용자를 허용
+  return <AuthGuard>{children}</AuthGuard>;
 };
 
 // 사용자 전용 가드
 const UserGuard = ({ children }) => {
-  return <AuthGuard requiredRole="user">{children}</AuthGuard>;
+  return <AuthGuard>{children}</AuthGuard>;
 };
 
 // 메인 레이아웃 컴포넌트 (기획서 UI 구조 기반)
-const MainLayout = ({ children }) => {
-  const { logout, name, department, position, status, role } = useAuth();
+const MainLayout = () => {
+  const { user } = useUser();
   const location = useLocation();
-
-  const handleLogout = () => {
-    console.log("[MainLayout] 로그아웃 실행");
-    logout();
-  };
 
   // 현재 경로에 따른 네비게이션 활성화
   const getNavClass = (path) => {
-    return location.pathname.startsWith(path) ? 'nav-link active' : 'nav-link';
+    return location.pathname.startsWith(path) ? "nav-link active" : "nav-link";
   };
+
+  // Clerk 사용자 정보에서 이름 추출
+  const displayName = user?.firstName || user?.username || "사용자";
 
   return (
     <div className="app-layout">
-      {/* 헤더 (기획서 구조 기반) */}
+      {/* 헤더 (Clerk 기반) */}
       <header className="app-header">
         <div className="header-content">
           {/* 사용자 정보 */}
           <div className="user-info">
-            <span className="user-name">{name}</span>
-            <span className="user-details">
-              {department} {position} ({status})
-            </span>
-            {role === 'admin' && <span className="admin-badge">관리자</span>}
+            <span className="user-name">{displayName}</span>
+            <span className="user-details">인사팀 직원 (재직)</span>
           </div>
 
           {/* 앱 타이틀 */}
           <h1 className="app-title">인사팀 CMS</h1>
 
-          {/* 메인 네비게이션 (기획서 구조 기반) */}
+          {/* 메인 네비게이션 */}
           <nav className="main-nav">
-            <a href="/dashboard" className={getNavClass('/dashboard')}>
+            <Link to="/dashboard" className={getNavClass("/dashboard")}>
               대시보드
-            </a>
-            <a href="/staff" className={getNavClass('/staff')}>
+            </Link>
+            <Link to="/staff" className={getNavClass("/staff")}>
               직원 관리
-            </a>
-            <a href="/attendance" className={getNavClass('/attendance')}>
+            </Link>
+            <Link to="/attendance" className={getNavClass("/attendance")}>
               근태 관리
-            </a>
-            <a href="/profile" className={getNavClass('/profile')}>
+            </Link>
+            <Link to="/profile" className={getNavClass("/profile")}>
               프로필
-            </a>
+            </Link>
           </nav>
 
-          {/* 로그아웃 버튼 */}
-          <button className="logout-btn" onClick={handleLogout}>
-            로그아웃
-          </button>
+          {/* Clerk User Button (프로필 및 로그아웃) */}
+          <UserButton afterSignOutUrl="/" />
         </div>
       </header>
 
       {/* 메인 컨텐츠 영역 */}
       <main className="app-main">
-        {children}
+        <Outlet />
       </main>
     </div>
   );
@@ -147,74 +156,79 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* 공개 라우트 */}
-      <Route path="/login" element={<LoginPage />} />
+      {/* 공개 라우트 - 로그인되지 않은 사용자만 접근 가능 */}
+      <Route
+        path="/sign-in/*"
+        element={
+          <div className="auth-container">
+            <SignIn routing="path" path="/sign-in" />
+          </div>
+        }
+      />
 
-      {/* 보호된 라우트들 - 메인 레이아웃으로 감싸기 */}
-      <Route path="/" element={
-        <AuthGuard>
-          <MainLayout>
+      {/* 보호된 라우트들 - 로그인된 사용자만 접근 가능 */}
+      <Route
+        path="/"
+        element={
+          <SignedIn>
+            <MainLayout />
+          </SignedIn>
+        }
+      >
+        {/* 기본 리다이렉트 */}
+        <Route index element={<Navigate to="/dashboard" replace />} />
+
+        {/* 대시보드 */}
+        <Route path="dashboard" element={<DashboardPage />} />
+
+        {/* 직원 관리 */}
+        <Route
+          path="staff"
+          element={
             <Routes>
-              {/* 기본 리다이렉트 */}
-              <Route index element={<Navigate to="/dashboard" replace />} />
-
-              {/* 대시보드 */}
-              <Route path="dashboard" element={<DashboardPage />} />
-
-              {/* 직원 관리 (사용자 권한 필요) */}
-              <Route path="staff" element={
-                <UserGuard>
-                  <Routes>
-                    <Route index element={<StaffListPage />} />
-                    <Route path=":id" element={<StaffDetailPage />} />
-                    <Route path="form" element={<StaffFormPage />} />
-                    <Route path="form/:id" element={<StaffFormPage />} />
-                  </Routes>
-                </UserGuard>
-              } />
-
-              {/* 근태 관리 (사용자 권한 필요) */}
-              <Route path="attendance" element={
-                <UserGuard>
-                  <AttendancePage />
-                </UserGuard>
-              } />
-
-              {/* 프로필 관리 (사용자 권한 필요) */}
-              <Route path="profile" element={
-                <UserGuard>
-                  <ProfilePage />
-                </UserGuard>
-              } />
-
-              {/* 404 페이지 */}
-              <Route path="*" element={<NotFoundPage />} />
+              <Route index element={<StaffListPage />} />
+              <Route path=":id" element={<StaffDetailPage />} />
+              <Route path="form" element={<StaffFormPage />} />
+              <Route path="form/:id" element={<StaffFormPage />} />
             </Routes>
-          </MainLayout>
-        </AuthGuard>
-      } />
+          }
+        />
+
+        {/* 근태 관리 */}
+        <Route path="attendance" element={<AttendancePage />} />
+
+        {/* 프로필 관리 */}
+        <Route path="profile" element={<ProfilePage />} />
+
+        {/* 404 페이지 */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+
+      {/* 로그인되지 않은 사용자를 위한 리다이렉트 */}
+      <Route
+        path="*"
+        element={
+          <SignedOut>
+            <Navigate to="/sign-in" replace />
+          </SignedOut>
+        }
+      />
     </Routes>
   );
 };
 
 // 메인 App 컴포넌트
-const AppContent = () => {
-  console.log("[App] HRM CMS 애플리케이션 시작");
-
-  return (
-    <Router>
-      <div className="App">
-        <AppRoutes />
-      </div>
-    </Router>
-  );
-};
-
 function App() {
+  console.log("[App] HRM CMS 애플리케이션 시작 (Clerk 기반)");
+
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+      <Router>
+        <div className="App">
+          <AppRoutes />
+        </div>
+      </Router>
+    </ClerkProvider>
   );
 }
 
