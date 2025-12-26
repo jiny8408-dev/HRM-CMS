@@ -2,8 +2,25 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import hrmCrypto from '../utils/base44Crypto';
 
 // 기획서 Staff 테이블 스키마 기반 Auth Context
-// 사용자 정보: 사번, 이름, 부서, 직급, 상태 관리
+// Staff 테이블 필드: staff_id(사번), name(이름), department(부서), position(직급), status(상태)
 const AuthContext = createContext();
+
+// Staff 테이블 상태 ENUM 값 (기획서 기반)
+export const STAFF_STATUS = {
+  ACTIVE: '재직',
+  LEAVE: '휴직',
+  RESIGNED: '퇴사'
+};
+
+// Staff 테이블 직급 ENUM 값
+export const STAFF_POSITIONS = [
+  '사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '사장'
+];
+
+// Staff 테이블 부서 ENUM 값
+export const STAFF_DEPARTMENTS = [
+  '개발팀', '디자인팀', '마케팅팀', '영업팀', '인사팀', '회계팀', '총무팀'
+];
 
 // Auth Context Provider 컴포넌트
 export const AuthProvider = ({ children }) => {
@@ -52,9 +69,9 @@ export const AuthProvider = ({ children }) => {
         id: 1,
         staff_id: 'EMP001',
         name: '김철수',
-        department: '개발팀',
-        position: '대리',
-        status: '재직',
+        department: STAFF_DEPARTMENTS[0], // 개발팀
+        position: STAFF_POSITIONS[2], // 대리
+        status: STAFF_STATUS.ACTIVE, // 재직
         email: email,
         join_date: '2023-01-15',
         role: 'user' // Admin 또는 User (기획서 권한 분리)
@@ -155,10 +172,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     // 상태 값 검증 (기획서 ENUM: 재직, 휴직, 퇴사)
-    const validStatuses = ['재직', '휴직', '퇴사'];
+    const validStatuses = Object.values(STAFF_STATUS);
     if (!validStatuses.includes(userData.status)) {
       console.warn('[AuthContext] 유효하지 않은 상태 값:', userData.status);
-      return { valid: false, error: '유효하지 않은 상태 값입니다.' };
+      return { valid: false, error: `유효하지 않은 상태 값입니다. 허용된 값: ${validStatuses.join(', ')}` };
     }
 
     return { valid: true };
@@ -178,6 +195,11 @@ export const AuthProvider = ({ children }) => {
     position: user?.position,
     status: user?.status,
     role: user?.role,
+
+    // Staff 테이블 상수들 (기획서 기반)
+    STAFF_STATUS,
+    STAFF_POSITIONS,
+    STAFF_DEPARTMENTS,
 
     // 액션 함수들
     login,
